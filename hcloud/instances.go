@@ -179,6 +179,31 @@ func (i *instances) InstanceMetadata(ctx context.Context, node *corev1.Node) (*c
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	// Retain any existing IPs
+	extraIPs := node.Status.Addresses
+	var extraIPsDedup []corev1.NodeAddress
+	for _, ip := range extraIPs {
+		duplicate := false
+		for _, existingIP := range metadata.NodeAddresses {
+			if ip.Type == existingIP.Type && ip.Address == existingIP.Address {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			extraIPsDedup = append(extraIPsDedup, ip)
+		}
+	}
+	if len(extraIPsDedup) > 0 {
+		metadata = &cloudprovider.InstanceMetadata{
+			ProviderID:    metadata.ProviderID,
+			InstanceType:  metadata.InstanceType,
+			NodeAddresses: append(metadata.NodeAddresses, extraIPsDedup...),
+			Zone:          metadata.Zone,
+			Region:        metadata.Region,
+		}
+	}
+
 	return metadata, nil
 }
 
