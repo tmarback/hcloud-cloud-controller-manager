@@ -630,7 +630,16 @@ func (l *LoadBalancerOps) ReconcileHCLBTargets(
 		if isCloudServer {
 			k8sNodeIDsHCloud[id] = true
 		} else {
-			k8sNodeIDsRobot[int(id)] = true
+			serverID := int(id)
+			k8sNodeIDsRobot[serverID] = true
+			for _, addr := range node.Status.Addresses {
+				if addr.Type == corev1.NodeInternalIP {
+					robotIPsToIDs[addr.Address] = serverID
+					if usePrivateIP && net.ParseIP(addr.Address).To4() != nil {
+						robotIDToIPv4[serverID] = addr.Address
+					}
+				}
+			}
 		}
 		k8sNodes[id] = node
 	}
@@ -646,7 +655,9 @@ func (l *LoadBalancerOps) ReconcileHCLBTargets(
 
 		for _, s := range dedicatedServers {
 			robotIPsToIDs[s.ServerIP] = s.ServerNumber
-			robotIDToIPv4[s.ServerNumber] = s.ServerIP
+			if !usePrivateIP {
+				robotIDToIPv4[s.ServerNumber] = s.ServerIP
+			}
 		}
 	}
 
@@ -691,7 +702,7 @@ func (l *LoadBalancerOps) ReconcileHCLBTargets(
 		if target.Type == hcloud.LoadBalancerTargetTypeIP {
 			ip := target.IP.IP
 			id, foundServer := robotIPsToIDs[ip]
-			hclbTargetIPs[ip] = foundServer && k8sNodeIDsRobot[id]
+			hclbTargetIPs[ip] = foundServer && k8sNodeIDsRobot[id] && robotIDToIPv4[id] == ip
 			if hclbTargetIPs[ip] {
 				continue
 			}
